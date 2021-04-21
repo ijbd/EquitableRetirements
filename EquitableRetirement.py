@@ -8,11 +8,14 @@ class EquitableRetirement:
         def __init__(self):
             # parameters
             self.HISTGEN = None 
+            self.COALCAP = None
             self.CF = None 
-            self.CAPEX = None  
-            self.REOPEX = None
-            self.COALOPEX = None 
+            self.RECAPEX = None  
+            self.REFOPEX = None
+            self.COALVOPEX = None 
+            self.COALFOPEX = None
             self.MAXCAP = None 
+            self.SITEMAXCAP = None
             self.MAXSITES = None
             self.HD = None
             self.RETEF = None
@@ -22,7 +25,16 @@ class EquitableRetirement:
 
     class Output:
         def __init__(self):
-            pass
+            self.Z = None
+            self.capInvest = None
+            self.capRetire = None 
+            self.reGen = None
+            self.coalGen = None
+            self.reCap = None
+            self.reInvest = None
+            self.coalRetire = None
+            self.reOnline = None
+            self.coalOnline = None
 
     def __init__(self):
         # sets
@@ -34,7 +46,7 @@ class EquitableRetirement:
         self.Output = EquitableRetirement.Output()
    
     def __buildModel(self,alpha,beta,gamma):
-    
+
         ######### helper function ##########
 
         def a2d(data, *sets): 
@@ -82,11 +94,14 @@ class EquitableRetirement:
 
         # parameters
         model.HISTGEN = pe.Param(model.C, model.Y, initialize=a2d(self.Params.HISTGEN,self.C,self.Y), doc = "Historical Generation of coal plants")
-        model.CF = pe.Param(model.R, model.Y, initialize=a2d(self.Params.CF,self.R,self.Y),doc = "Hourly CF of each RE location")
-        model.CAPEX = pe.Param(model.R, initialize=a2d(self.Params.CAPEX,self.R),doc = "RE plants CAPEX values ($/MW")
+        model.COALCAP = pe.Param(model.C, initialize=a2d(self.Params.COALCAP,self.C), doc = 'Nameplate Capacity of coal plants')
+        model.CF = pe.Param(model.R, initialize=a2d(self.Params.CF,self.R),doc = "Annual CF @ RE location")
+        model.RECAPEX = pe.Param(model.R, initialize=a2d(self.Params.CAPEX,self.R),doc = "RE plants CAPEX values ($/MW")
         model.REOPEX = pe.Param(model.R, initialize=a2d(self.Params.REOPEX,self.R),doc = "RE plants OPEX values ($/MWh")
-        model.COALOPEX = pe.Param(model.C, initialize=a2d(self.Params.COALOPEX,self.C), doc = "Coal plants OPEX values $/MWh")
-        model.MAXCAP = pe.Param(model.R,initialize=a2d(self.Params.MAXCAP,self.R), doc ='Maximum capacity for RE plant at the site')
+        model.COALVOPEX = pe.Param(model.C, initialize=a2d(self.Params.COALVOPEX,self.C), doc = 'Coal plants VOPEX values $/MWh')
+        model.COALFOPEX = pe.Param(model.C, initialize=a2d(self.Params.COALOPEX,self.C), doc = "Coal plants FOPEX values $/MW")
+        model.MAXCAP = pe.Param(model.R,model.C,initialize=a2d(self.Params.MAXCAP,self.R,self.C), doc ='Maximum capacity for RE plant to replace coal plant MW')
+        model.SITEMAXCAP = pe.Param(model.R, initialzie=a2d(self.Params.SITEMAXCAP,self.R), doc = 'Maximum total capacity for RE site MW')
         model.MAXSITES = pe.Param(model.C,initialize=a2d(self.Params.MAXSITES,self.C), doc = "Number of Sites allowable to replace coal plant")
         model.HD = pe.Param(model.C,initialize=a2d(self.Params.HD,self.C), doc="Health damages of each coal plant")
         model.RETEF = pe.Param(model.C,initialize=a2d(self.Params.RETEF,self.C), doc="Retirement EF for each coal plant (will most likely be a single static value)")
@@ -97,8 +112,8 @@ class EquitableRetirement:
         # variables
         model.capInvest = pe.Var(model.R,model.C,model.Y,within=pe.NonNegativeReals, doc = "Capacity to be invested in that renewable plant to replace coal")
         model.capRetire = pe.Var(model.C,model.Y,within=pe.NonNegativeReals,doc = "amount of capacity to be retired for each coal plant")
-        model.coalGen = pe.Var(model.C,model.Y,within=pe.NonNegativeReals, doc = "Coal generation for each plant")
         model.reGen = pe.Var(model.R,model.C,model.Y,within=pe.NonNegativeReals, doc = "RE generation at each plant")
+        model.coalGen = pe.Var(model.C,model.Y,within=pe.NonNegativeReals, doc = "Coal generation for each plant")
         model.reCap = pe.Var(model.R,model.C,model.Y,within=pe.NonNegativeReals, doc = "Capacity size for each RE plant")
         model.reInvest = pe.Var(model.R,model.C,model.Y,within=pe.Binary, doc = "Binary variable to invest in RE to replace coal")
         model.coalRetire = pe.Var(model.C,model.Y,within=pe.Binary, doc = "Binary variable to retire coal plant")
@@ -107,15 +122,18 @@ class EquitableRetirement:
 
         # objective
         def SystemCosts(model):
-            return sum(sum(sum(model.CAPEX[r] * model.capInvest[r,c,y] for c in model.C) for r in model.R)for y in model.Y) \
-                + sum(sum(model.COALOPEX[c]*model.coalGen[c,y] for c in model.C) for y in model.Y)
+            return sum(sum(model.COALFOPEX[c] * model.COALCAP[c] * model.coalOnline[c,y] for c in model.C) for y in model.Y) \
+                + sum(sum(model.COALVOPEX[c] * model.coalGen[c,y] for c in model.C) for y in model.Y) \
+                + sum(sum(sum(model.REFOPEX[r] * model.reCap[r,c,y] for r in model.R) for c in model.C) for y in model.Y) \
+                + sum(sum(sum(model.RECAPEX[r] * model.capInvest[r,c,y] for r in model.R) for c in model.C)for y in model.Y)
 
         def HealthCosts(model):
             return sum(sum(model.HD[c]*model.coalGen[c,y] for c in model.C) for y in model.Y)
 
         def Jobs(model):
             #first coal retire + coal operation then + RE construction + RE O&M
-            return sum(sum(model.RETEF[c]*model.capRetire[c,y] + model.COALOMEF[c]*model.coalGen[c,y] for c in model.C) for y in model.Y) \
+            return sum(sum(model.RETEF[c]*model.capRetire[c,y] for c in model.C) for y in model.Y) \
+                + sum(sum(model.COALOMEF[c]*model.coalGen[c,y] for c in model.C) for y in model.Y) \
                 + sum(sum(sum(model.CONEF[r,y]*model.capInvest[r,c,y] + model.REOMEF[r,y]*model.reGen[r,c,y] for c in model.C) for r in model.R) for y in model.Y)
 
         def Z(model):
@@ -136,11 +154,11 @@ class EquitableRetirement:
         model.reGenRule = pe.Constraint(model.R,model.C,model.Y,rule=reGenRule, doc='RE generation must be less than or equal to capacity factor* chosen capacity')
 
         def reCapRule(model,r,c,y):
-            return model.reCap[r,c,y] <= model.MAXCAP[r]*model.reOnline[r,c,y]
+            return model.reCap[r,c,y] <= model.MAXCAP[r,c]*model.reOnline[r,c,y]
         model.reCapRule = pe.Constraint(model.R,model.C,model.Y,rule=reCapRule, doc = "RE capacity decision variable should be less then or equal to max capacity* whether RE plant is online")
 
         def reCapLimit(model,r,y):
-            return sum(model.reCap[r,c,y] for c in model.C) <= model.MAXCAP[r]
+            return sum(model.reCap[r,c,y] for c in model.C) <= model.SITEMAXCAP[r]
         model.reCapLimit = pe.Constraint(model.R,model.Y,rule=reCapLimit, doc = "RE plants can not overcount towards multiple coal generators (sum of RE plant contribution to each coal plant <= max cap of RE plant)")
 
         def capInvestRule(model,r,c,y):
@@ -148,13 +166,16 @@ class EquitableRetirement:
                 return model.capInvest[r,c,y] == model.reCap[r,c,y]
             #else
             return model.capInvest[r,c,y] == model.reCap[r,c,y] - model.reCap[r,c,y-1]
-        model.capInvestRule = pe.Constraint(model.R,model.C,model.Y,rule=capInvestRule, doc = "RE capacity to invest must be equal to difference in RE cap across years")
+        model.capInvestRule = pe.Constraint(model.R,model.C,model.Y,rule=capInvestRule, doc = "RE capacity to invest is equal to difference in RE cap across years")
 
-        def capInvestLimit(model,r,c,y): ## MAYBE DELETE
-            return model.capInvest[r,c,y] <= model.MAXCAP[r]*model.reInvest[r,c,y]
-        model.capInvestLimit = pe.Constraint(model.R,model.C,model.Y,rule=capInvestLimit, doc = "RE capacity to invest must be less than or equal to max cap * whether we invest or not")
+        def capInvestLimit(model,r,c,y):
+            return model.capInvest[r,c,y] <= model.MAXCAP[r,c]*model.reInvest[r,c,y]
+        model.capInvestLimit = pe.Constraint(model.R,model.C,model.Y,rule=capInvestLimit, doc = "RE capacity to invest must be less than or equal to max cap of site, if we invest")
 
-        
+        def capRetireRule(model,c,y):
+            return model.capRetire[c,y]  == model.COALCAP[c]*model.coalRetire[c,y]
+        model.capRetireRule = pe.Constraint(model.C,model.Y,rule=capRetireRule, doc = "Retired coal capacity is equal to the whole plant capacity, if it is retired that year")
+
         def reInvestRule(model,r,c,y):
             if y == model.Y[1]:
                 return model.reInvest[r,c,y] == model.reOnline[r,c,y]
@@ -163,8 +184,12 @@ class EquitableRetirement:
         model.reInvestRule = pe.Constraint(model.R,model.C,model.Y,rule=reInvestRule,doc= "Decision to invest in RE is current year - prior")
 
         def reInvestLimit(model,c,y):
-            return sum( model.reInvest[r,c,y] for r in model.R) <= model.MAXSITES[c] * model.coalRetire[c,y]
+            return sum(model.reInvest[r,c,y] for r in model.R) <= model.MAXSITES[c] * model.coalRetire[c,y]
         model.reInvestLimit = pe.Constraint(model.C,model.Y,rule=reInvestLimit,doc = "Number of new RE sites must be less than or equal to max RE sites for that coal plant * whether we retire")
+
+        def replacementSitesLimit(model,c,y):
+            return sum(model.reInvest[r,c,y] for r in model.R) <= model.MAXSITES[c] * model.coalRetire[c,y]
+        model.replacementSitesLimit = pe.Constraint(model.C,model.Y,rule=replacementSitesLimit,doc = "If a coal plant retires, the number of sites that can replace it are limited")
 
         def coalRetireRule(model,c,y):
             if y == model.Y[1]:
@@ -172,15 +197,7 @@ class EquitableRetirement:
             #else
             return model.coalRetire[c,y] == model.coalOnline[c,y-1] - model.coalOnline[c,y]
         model.coalRetireRule = pe.Constraint(model.C,model.Y,rule=coalRetireRule, doc = "Coal retire activation is current year must prior year")
-
-        def coalRetireLimit(model,c):
-            return sum(model.coalRetire[c,y] for y in model.Y) <= 1
-        model.coalRetireLimit = pe.Constraint(model.C,rule=coalRetireLimit, doc = "Can only retire a coal plant once over time period")
-
-        def coalCapRetire(model,c,y):
-            return model.capRetire[c,y]  == model.HISTGEN[c,y]*model.coalRetire[c,y]
-        model.coalCapRetire = pe.Constraint(model.C,model.Y,rule=coalCapRetire, doc = "Coal capacity retired is equal to historical gen * whether we retire that year")
-
+        
         self.model = model
 
     def solve(self,alpha,beta,gamma):
@@ -190,6 +207,7 @@ class EquitableRetirement:
         #rebuild model
         self.__buildModel(alpha,beta,gamma)
 
+        print('running ({},{},{})...'.format(alpha,beta,gamma))
         opt = pyomo.opt.SolverFactory('glpk')
         opt.solve(self.model)
 
@@ -209,53 +227,4 @@ class EquitableRetirement:
         self.Output.coalOnline = np.array([[pe.value(self.model.coalOnline[c,y]) for y in self.Y] for c in self.C])
         pass
 
-def test():
-    ##### SAMPLE DATA #####
-    numYears = 3
-    numCoal = 4
-    numRE = 6
 
-    
-    R = np.arange(numRE)
-    C = np.arange(numCoal)*11 + 11
-    Y = np.arange(numYears) + 2020
-    
-    HISTGEN = np.ones((numCoal,numYears))*100
-    CF = np.ones((numRE,numYears))*.5
-    CAPEX = np.arange(numRE)
-    REOPEX = numRE - np.arange(numRE)
-    COALOPEX = np.arange(numCoal)
-    MAXCAP = np.ones(numRE)*10
-    MAXSITES = np.ones(numCoal) *10
-    HD = numCoal-np.arange(numCoal)
-    RETEF = np.arange(numCoal)*20
-    CONEF = np.arange(numRE)
-    COALOMEF = numCoal-np.arange(numCoal)
-    REOMEF = numRE-np.arange(numRE)
-    
-    ######################
-
-    m = EquitableRetirement()
-    m.R = R
-    m.Y = Y
-    m.C = C
-    m.Params.HISTGEN = HISTGEN
-    m.Params.CF = CF
-    m.Params.CAPEX = CAPEX
-    m.Params.REOPEX = REOPEX
-    m.Params.COALOPEX = COALOPEX
-    m.Params.MAXCAP = MAXCAP
-    m.Params.MAXSITES = MAXSITES 
-    m.Params.HD = HD
-    m.Params.RETEF = RETEF
-    m.Params.CONEF = CONEF
-    m.Params.COALOMEF = COALOMEF 
-    m.Params.REOMEF = REOMEF 
-
-    m.solve(1,1,0)
-
-def main():
-    pass
-
-if __name__ == '__main__':
-    test()
