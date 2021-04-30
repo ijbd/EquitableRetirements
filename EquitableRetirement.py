@@ -151,8 +151,8 @@ class EquitableRetirement:
         model.balanceGenRule = pe.Constraint(model.C,model.Y,rule=balanceGenRule, doc = "RE generation for each coal location must equal retired capacity")
 
         def reGenRule(model,r,c,y):
-            return model.reGen[r,c,y] <= model.CF[r]*model.reCap[r,c,y]
-        model.reGenRule = pe.Constraint(model.R,model.C,model.Y,rule=reGenRule, doc='RE generation must be less than or equal to capacity factor* chosen capacity')
+            return model.reGen[r,c,y] <= model.CF[r]*model.reCap[r,c,y]*8760
+        model.reGenRule = pe.Constraint(model.R,model.C,model.Y,rule=reGenRule, doc='RE generation must be less than or equal to capacity factor* chosen capacity *8760')
 
         def reCapRule(model,r,c,y):
             return model.reCap[r,c,y] <= model.MAXCAP[r,c]*model.reOnline[r,c,y]
@@ -201,7 +201,7 @@ class EquitableRetirement:
         
         self.model = model
 
-    def solve(self,alpha,beta,gamma):
+    def solve(self,alpha,beta,gamma,solver='glpk'):
         '''solve(self,alpha,beta,gamma):
         Solve the equitable retirement optimization problem. PRECONDITION: All sets and params have been initialized.
         '''
@@ -209,8 +209,12 @@ class EquitableRetirement:
         self.__buildModel(alpha,beta,gamma)
 
         print('running ({},{},{})...'.format(alpha,beta,gamma))
-        opt = pyomo.opt.SolverFactory('glpk')
+        
+        opt = pyomo.opt.SolverFactory(solver)
+        
         opt.solve(self.model)
+
+
 
         # extract
         self.__extractResults()
