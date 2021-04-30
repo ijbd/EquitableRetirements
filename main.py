@@ -5,12 +5,6 @@ from RenewableSites import RenewableSites
 import numpy as np
 import pandas as pd 
 
-def getDefaultSolarMaxCap(numSolar):
-    pass
-
-def getDefaultWindMaxCap(numWind):
-    pass
-
 def test_large():
     ''' use sample data to test runtime and large-scale functionality of formulation '''
     print('TEST_LARGE:')
@@ -40,6 +34,7 @@ def test_large():
                'SITEMAXCAP' : np.ones(len(reSites))*1e3,
                'MAXSITES' : np.ones(len(plants))*10
              }
+             
         # employment factors
     ef = { 'RETEF' : np.ones(len(plants))*.25,
            'CONEF' : np.ones((len(reSites),numYears))*.25,
@@ -100,5 +95,68 @@ def test_large():
 
     pass
 
+def test_cplex():
+    ''' small test to see if the cplex is working '''
+    print('TEST_CPLEX:')
+
+    numYears = 10
+    numCoal = 5
+    numRE = 10
+
+    ### BUILD MODEL
+    m = EquitableRetirement()
+
+    m.Y = np.arange(numYears)+2020
+    m.R = np.arange(numRE)
+    m.C = np.arange(numCoal)
+
+    m.Params.HISTGEN = np.ones(numCoal)*8760
+    m.Params.COALCAP = np.ones(numCoal)
+    m.Params.CF = np.ones(numRE)*.75
+    m.Params.RECAPEX = np.ones(numRE)
+    m.Params.REFOPEX = np.ones(numRE)
+    m.Params.COALVOPEX = np.ones(numCoal)
+    m.Params.COALFOPEX = np.ones(numCoal)
+    m.Params.MAXCAP = np.ones((numRE,numCoal))*10
+    m.Params.SITEMAXCAP = np.ones(numRE)*10
+    m.Params.MAXSITES = np.ones(numCoal)*10
+    m.Params.HD = np.ones(numCoal)*0
+    m.Params.RETEF = np.ones(numCoal)*0
+    m.Params.CONEF = np.ones((numRE,numYears))*0
+    m.Params.COALOMEF = np.ones(numCoal)*0
+    m.Params.REOMEF = np.ones((numRE,numYears))*0
+
+    ### CHECK DIMS
+    print('\t','Y\t',len(m.Y))
+    print('\t','R\t',len(m.R))
+    print('\t','C\t',len(m.C))
+    print('\t','HISTGEN\t',m.Params.HISTGEN.shape)
+    print('\t','COALCAP\t',m.Params.COALCAP.shape)
+    print('\t','CF\t',m.Params.CF.shape)
+    print('\t','RECAPEX\t',m.Params.RECAPEX.shape)
+    print('\t','REFOPEX\t',m.Params.REFOPEX.shape)
+    print('\t','COALVOPEX\t',m.Params.COALVOPEX.shape)
+    print('\t','COALFOPEX\t',m.Params.COALFOPEX.shape)
+    print('\t','MAXCAP\t',m.Params.MAXCAP.shape)
+    print('\t','SITEMAXCAP\t',m.Params.SITEMAXCAP.shape)
+    print('\t','MAXSITES\t',m.Params.MAXSITES.shape)
+    print('\t','HD\t',m.Params.HD.shape)
+    print('\t','RETEF\t',m.Params.RETEF.shape)
+    print('\t','CONEF\t',m.Params.CONEF.shape)
+    print('\t','COALOMEF\t',m.Params.COALOMEF.shape)
+    print('\t','REOMEF\t',m.Params.REOMEF.shape)
+
+    print('\t','')
+
+    print('\t','solving...')
+
+    m.solve(1,0,0,'cplex')
+
+    print('\t',m.Output.Z)
+
+    pass
+
+
 if __name__ == '__main__':
-    test_large()
+    #test_large()
+    #test_cplex()
